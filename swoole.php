@@ -37,7 +37,7 @@ run(function () {
     /*
      * 第三个参数 是否开启ssl
      * */
-    $server = new Server('0.0.0.0', 5080, false);
+    $server = new Server('0.0.0.0', 5701, false);
 
     $server->handle('/ws', function (Request $request, Response $ws) {
 
@@ -47,7 +47,7 @@ run(function () {
         $ssh = new SSH2('localhost',22);
 
         /*如果登录失败*/
-        if (!$ssh->login('root', '123456')) {
+        if (!$ssh->login('root', '123')) {
             $ws->close();
             return;
         }
@@ -123,13 +123,6 @@ run(function () {
 
         $subscribe(); //开始订阅
 
-        $cmd=[
-            'ps -ef',
-            'ping 127.0.0.1',
-            'ifconfig',
-            "\x03"
-        ];
-
 
         while (true) {
 
@@ -152,14 +145,8 @@ run(function () {
                     break;
                 }
 
-                /*
-                  * 如果不在测试命令，则终止
-                  * */
-                if(!in_array($frame->data,$cmd)){
-                    continue;
-                }
 
-                $ssh->write($frame->data."\n"); // note the "\n"
+                $ssh->write($frame->data); // note the "\n"
 
             }
         }

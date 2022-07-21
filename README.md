@@ -1,5 +1,18 @@
 本来是想通过PHP的proc_open和进程进行交互，可是中间的坑太多了，不得不转换一下思路，然后想起来宝塔有网页版shell客户端，然后研究了一下，嘿嘿，发现能成😁😁😁。
 
+
+## 2022-07-22 再次更新
+
+使用了有名的xterm.js，基本可作为生产使用了。（权限记得做好）
+
+测试Demo ：[http://cname.teiao.com:5701/](http://cname.teiao.com:5701/)
+
+## 测试代码
+
+Github：[https://github.com/friend-nicen/php-web-ssh](https://github.com/friend-nicen/php-web-ssh)
+
+Gitee：[https://gitee.com/friend-nicen/php-web-ssh](https://gitee.com/friend-nicen/php-web-ssh)
+
 ## 前期准备
 
 PHP连接ssh是基于第三方拓展库，PECL/ssh2（ libssh2的php扩展，允许php程序调用libssh2中的函数）
@@ -7,8 +20,6 @@ PHP连接ssh是基于第三方拓展库，PECL/ssh2（ libssh2的php扩展，允
 然后有一个现成的、封装好大部分常用操作的库phpseclib：https://phpseclib.com
 
 通过swoole的协程实现SSH的读和写并发进行以及websocket和浏览器进行通信。
-
-测试Demo ：[http://cname.teiao.com:5707/](http://cname.teiao.com:5707/)
 
 ## 1.安装ssh2拓展库
 
@@ -43,3 +54,4 @@ php.ini中加入 extension=php_ssh2.dll ，完事。
 ```
 composer require phpseclib/phpseclib:~3.0
 ```
+
