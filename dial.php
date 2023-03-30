@@ -15,6 +15,12 @@ use function Swoole\Coroutine\defer;
 
 
 /*
+ * 通过hash存放在机器人的在线状态；
+ * 订阅机器人的频道 recv_QQ
+ * */
+
+
+/*
  * 设置协程运行相关的参数
  * */
 Co::set([
@@ -29,9 +35,9 @@ Co::set([
  * 创建协程容器
  * */
 run(function () {
-    
-    
-    
+
+
+
     /*
      * 内存释放
      * */
@@ -41,7 +47,7 @@ run(function () {
             if($size>0){
                 logs("内存释放" . $size);
             }
-          
+
         });
     });
 
@@ -55,43 +61,6 @@ run(function () {
     $server->redis = getRedis(); //创建redis
     $server->redis->del("ONLINE_STAFF"); //清空在线状态
 
-    /* 消息处理 */
-    $server->handel = function ($msg) use ($server) {
-
-        logs('新消息：' . $msg);
-
-        $json = @json_decode($msg, true); //redis消息
-        if (empty($json['name'])) return; //如果手机号为空
-
-        $ws = $server->table[$json['name']]; //websocket服务器
-
-        /* 如果ws不存在 */
-        if (!$ws) {
-            logs('未获取到在线的websocket：' . $msg);
-            return;
-        }
-
-
-        /*
-         * 消息推送
-         * */
-        switch ($json['type']) {
-            case 'speak':
-                $ws->push($json['speak']);
-                logs("拨打电话：" . $json['speak'] . "！");
-                break;
-            case 'quit':
-                $ws->is_closed = true; //标记关闭
-                $ws->push('quit');
-                break;
-            case 'message':
-                $ws->push("#" . $json['speak']);
-                logs("发送短信：" . $json['speak'] . "！");
-                break;
-        }
-
-
-    };
 
 
     /*
@@ -110,7 +79,40 @@ run(function () {
          * 开启消息订阅
          * */
         $redis->subscribe(["RECV_DIAL"], function ($redis, $chan, $msg) use ($server) {
-            ($server->handel)($msg);
+
+            logs('新消息：' . $msg);
+
+            $json = @json_decode($msg, true); //redis消息
+            if (empty($json['name'])) return; //如果手机号为空
+
+            $ws = $server->table[$json['name']]; //websocket服务器
+
+            /* 如果ws不存在 */
+            if (!$ws) {
+                logs('未获取到在线的websocket：' . $msg);
+                return;
+            }
+
+
+            /*
+             * 消息推送
+             * */
+            switch ($json['type']) {
+                case 'speak':
+                    $ws->push($json['speak']);
+                    logs("拨打电话：" . $json['speak'] . "！");
+                    break;
+                case 'quit':
+                    $ws->is_closed = true; //标记关闭
+                    $ws->push('quit');
+                    break;
+                case 'message':
+                    $ws->push("#" . $json['speak']);
+                    logs("发送短信：" . $json['speak'] . "！");
+                    break;
+            }
+
+
         });
 
 
