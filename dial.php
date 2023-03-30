@@ -58,6 +58,7 @@ run(function () {
 
         /*websocket协议*/
         $ws->upgrade();
+        $redis = null; //redis客户端
 
 
         /*
@@ -80,7 +81,7 @@ run(function () {
                      * */
                     logs($ws->mobile . '，已断开链接！');
 
-                    if(!$ws->is_closed){
+                    if (!$ws->is_closed) {
                         $redis->hDel("ONLINE_STAFF", $ws->mobile); //取消在线状态
                     }
 
@@ -146,7 +147,7 @@ run(function () {
         /*
          * 清理链接
          * */
-        $quit = function ($log) use ($ws) {
+        $quit = function ($log) use ($ws, $redis) {
 
             logs($log);//记录退出原因
 
@@ -160,8 +161,8 @@ run(function () {
             /*
              * 关闭redis链接
              * */
-            if ($ws->redis) {
-                $ws->redis->close();//关闭链接
+            if ($redis) {
+                $redis->close();//关闭链接
             }
 
             $ws->close(); //断开ws
@@ -191,8 +192,8 @@ run(function () {
                 }
 
                 /* 如果redis客户端不存在 */
-                if (!$ws->redis) {
-                    $ws->redis = getRedis(); //创建redis
+                if (!$redis) {
+                    $redis = getRedis(); //创建redis
                 }
 
 
@@ -201,8 +202,8 @@ run(function () {
                * */
                 if ($frame->data == "online") {
 
-                    $online = $ws->redis->hLen("ONLINE_STAFF");
-                    $users = $ws->redis->hGetAll("ONLINE_STAFF");
+                    $online = $redis->hLen("ONLINE_STAFF");
+                    $users = $redis->hGetAll("ONLINE_STAFF");
                     $ws->push("当前在线用户数量为：" . (!$online ? 0 : $online . "<br>" . join("<br>", array_keys($users))));
 
                 } else {
@@ -220,17 +221,17 @@ run(function () {
                         if (!empty($data['msg']['name'])) {
 
 
-                            logs($data['msg']['name'] . "登录状态：" . $ws->redis->hGet("ONLINE_STAFF", $data['msg']['name']));
+                            logs($data['msg']['name'] . "登录状态：" . $redis->hGet("ONLINE_STAFF", $data['msg']['name']));
 
                             /*
                              * 如果已经在线
                              * */
-                            if ($ws->redis->hGet("ONLINE_STAFF", $data['msg']['name'])) {
+                            if ($redis->hGet("ONLINE_STAFF", $data['msg']['name'])) {
 
                                 logs("禁止重复登录，通知" . $data['msg']['name'] . "自动退出！");//记录退出原因
 
                                 /* 通知退出 */
-                                $ws->redis->publish("RECV_DIAL_" . $data['msg']['name'], json_encode([
+                                $redis->publish("RECV_DIAL_" . $data['msg']['name'], json_encode([
                                     'type' => 'quit',
                                     'name' => $data['msg']['name']
                                 ]));
@@ -245,7 +246,7 @@ run(function () {
                         }
 
                     } else {
-                        $ws->redis->publish("RECV_DIAL_" . $ws->mobile, $frame->data);
+                        $redis->publish("RECV_DIAL_" . $ws->mobile, $frame->data);
                     }
 
 
