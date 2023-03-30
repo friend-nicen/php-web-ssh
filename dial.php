@@ -8,15 +8,10 @@ use Swoole\WebSocket\CloseFrame;
 use Swoole\Coroutine\Http\Server;
 
 use Swoole\Coroutine;
+use Swoole\Timer;
 use function Swoole\Coroutine\go;
 use function Swoole\Coroutine\run;
 use function Swoole\Coroutine\defer;
-
-
-/*
- * 通过hash存放在机器人的在线状态；
- * 订阅机器人的频道 recv_QQ
- * */
 
 
 /*
@@ -28,10 +23,28 @@ Co::set([
 ]);
 
 
+
+
 /*
  * 创建协程容器
  * */
 run(function () {
+    
+    
+    
+    /*
+     * 内存释放
+     * */
+    go(function () {
+        Timer::tick(1000, function () {
+            $size = gc_mem_caches();
+            if($size>0){
+                logs("内存释放" . $size);
+            }
+          
+        });
+    });
+
 
 
     /*
@@ -48,10 +61,7 @@ run(function () {
         logs('新消息：' . $msg);
 
         $json = @json_decode($msg, true); //redis消息
-
-        if (empty($json['name'])) {
-            return;
-        }
+        if (empty($json['name'])) return; //如果手机号为空
 
         $ws = $server->table[$json['name']]; //websocket服务器
 
@@ -62,10 +72,24 @@ run(function () {
         }
 
 
-        /* 给指定的ws推送消息 */
-        $ws->push(($json['type'] == 'speak' ? "" : "#") . $json['speak']);
+        /*
+         * 消息推送
+         * */
+        switch ($json['type']) {
+            case 'speak':
+                $ws->push($json['speak']);
+                logs("拨打电话：" . $json['speak'] . "！");
+                break;
+            case 'quit':
+                $ws->is_closed = true; //标记关闭
+                $ws->push('quit');
+                break;
+            case 'message':
+                $ws->push("#" . $json['speak']);
+                logs("发送短信：" . $json['speak'] . "！");
+                break;
+        }
 
-        logs("消息发送成功！");
 
     };
 
@@ -98,19 +122,21 @@ run(function () {
         /*websocket协议*/
         $ws->upgrade();
 
-
         /*
          * 断开连接，清理退出
          * */
         $quit = function ($log) use ($ws, $server) {
 
-            logs($ws->mobile . "断开连接：" . $log);//记录退出原因
+            logs(($ws->mobile ?? "未登录") . "：" . "断开连接：" . $log);//记录退出原因
             logs("当前Ws连接数量：" . count($server->table));
 
             /* 是否要清除数据 */
-            if (!isset($ws->is_closed)) {
+            if (!isset($ws->is_closed) && $ws->mobile) {
+
                 unset($server->table[$ws->mobile]);
-                $server->redis->hDel("ONLINE_STAFF", $ws->mobile); //清除在线状态
+                $ws->redis->hDel("ONLINE_STAFF", $ws->mobile); //清除在线状态
+                $ws->redis->close(); //关闭redis
+
             }
 
             $ws->close(); //断开ws
@@ -142,56 +168,66 @@ run(function () {
                     break;
                 }
 
+                /* 如果redis客户端不存在 */
+                if (!$ws->redis) {
+                    $ws->redis = getRedis(); //创建redis
+                }
+
 
                 /*
                * 获取在线人数
                * */
                 if ($frame->data == "online") {
 
-                    $online = $server->redis->hLen("ONLINE_STAFF");
-                    $users = $server->redis->hGetAll("ONLINE_STAFF");
+                    $online = $ws->redis->hLen("ONLINE_STAFF");
+                    $users = $ws->redis->hGetAll("ONLINE_STAFF");
                     $ws->push("当前在线用户数量为：" . (!$online ? 0 : $online . "<br>" . join("<br>", array_keys($users))));
 
                 } else {
+
+
+                    /* 消息解密 */
+                    $data = @json_decode($frame->data, true);
+
                     /*
-                     * 正常处理逻辑
+                     * 如果没有手机号，并且要登录
                      * */
-                    if (!isset($ws->mobile)) {
+                    if (!isset($ws->mobile) && $data['type'] == "mobile_login") {
 
-                        $data = @json_decode($frame->data, true);
+                        /* 如果手机号不为空 */
+                        if (!empty($data['msg']['name'])) {
 
-                        if (isset($data['msg']['name']) && $data['msg']['name']) {
-
-                            $previous = $server->table[$data['msg']['name']];
 
                             /*
                              * 如果已经在线
                              * */
-                            if ($previous) {
+                            if (!empty($server->table[$data['msg']['name']])) {
+
                                 logs("禁止重复登录，通知" . $data['msg']['name'] . "自动退出！");//记录退出原因
-                                $previous->push('quit'); //通知退出
-                                $previous->is_closed = true; //标记关闭
+
+                                /* 通知退出 */
+                                $ws->redis->publish("RECV_DIAL", json_encode([
+                                    'type' => 'quit',
+                                    'name' => $data['msg']['name']
+                                ]));
+
                             }
 
                             logs('新消息：' . $data['msg']['name'] . "上线");
 
 
-                            /* 记录登录状态 */
-                            $server->redis->hSet('ONLINE_STAFF', $data['msg']['name'], time());
                             /* 记录连接 */
                             $server->table[$data['msg']['name']] = $ws;
-
                             /* 标记手机号 */
                             $ws->mobile = $data['msg']['name'];
-
+                            /* 记录登录状态 */
+                            $ws->redis->hSet('ONLINE_STAFF', $data['msg']['name'], time());
                         }
+
+                    } else {
+                        $ws->redis->publish("RECV_DIAL", $frame->data);
                     }
 
-
-                    /*
-                     * 处理消息
-                     * */
-                    ($server->handel)($frame->data);
 
                 }
 
