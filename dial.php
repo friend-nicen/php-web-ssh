@@ -29,24 +29,19 @@ Co::set([
 ]);
 
 
+
 /*
  * 创建协程容器
  * */
 run(function () {
 
-
     /*
-     * 内存释放
-     * */
-    go(function () {
-        Timer::tick(1000, function () {
-            $size = gc_mem_caches();
-            if ($size > 0) {
-                logs("内存释放" . $size);
-            }
-
-        });
-    });
+        清除记录
+    */
+    $redis=getRedis();
+    $redis->del("ONLINE_STAFF");
+    $redis->close();
+    
 
 
     /*
@@ -246,7 +241,13 @@ run(function () {
                         }
 
                     } else {
-                        $redis->publish("RECV_DIAL_" . $ws->mobile, $frame->data);
+                        
+                        logs("推送");
+                        
+                        if(!empty($data['name'])){
+                            $redis->publish("RECV_DIAL_" . $data['name'], $frame->data);
+                        }
+                        
                     }
 
 
@@ -261,7 +262,7 @@ run(function () {
      * 输出默认测试模板
      * */
     $server->handle('/', function (Request $request, Response $response) {
-        $response->end(getTest());
+        $response->end(getTestB());
     });
 
 
